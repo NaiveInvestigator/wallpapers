@@ -8,7 +8,6 @@ images = []
 for root, dirs, files in os.walk("."):
     # if ".git" in root:
     if ".git" in root or ".github" in root:
-    continue
         continue
 
     for f in files:
