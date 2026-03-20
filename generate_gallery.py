@@ -3,7 +3,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 # 1. Find and sort images
-valid_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+valid_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".JPEG", ".PNG", "JPG"}
 images = sorted(
     # Use as_posix() to ensure forward slashes for web links (fixes Windows backslashes)
     p.as_posix() for p in Path(".").rglob("*")
