@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# Check if the directory argument is provided
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <directory>"
+    exit 1
+fi
+
+# Assign the directory argument to a variable
+directory="$1"
+
+# Check if the provided directory exists
+if [ ! -d "$directory" ]; then
+    echo "Error: Directory '$directory' not found."
+    exit 1
+fi
+
+# Change to the provided directory
+cd "$directory" || exit
+
+# Iterate over each mp4 file in the directory
+for file in *.mp4; do
+    # Extract frames from the mp4 file using ffmpeg
+    ffmpeg -i "$file" frame%04d.png
+
+    # Convert frames to gif using gifski
+    gifski -o "${file%.mp4}.gif" frame*.png
+
+    # Clean up temporary frames
+    rm frame*.png
+done
+
