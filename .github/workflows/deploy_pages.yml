@@ -1,0 +1,78 @@
+name: Deploy gallery to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # lets the job keep its thumbnail cache in a GitHub Release
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false   # don't kill a run halfway through saving thumbnails
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false   # LFS pointers are enough: only NEW originals get downloaded
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install pillow boto3
+
+      # Thumbnails persist in a release asset (no expiry, not part of the repo).
+      - name: Restore thumbnails from the "thumbs-cache" release
+        shell: bash
+        run: |
+          mkdir -p site
+          if gh release download thumbs-cache --pattern thumbs.tar --dir /tmp 2>/dev/null; then
+            tar -xf /tmp/thumbs.tar -C site
+            echo "Restored $(ls site/thumbs | wc -l) thumbnails"
+          else
+            echo "No thumbnail cache yet (first run)"
+          fi
+
+      - name: Generate site (fails if any thumbnail fails)
+        env:
+          # Optional: only used if you ever set up an R2/S3 bucket. Empty = local mode.
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+        run: python generate_gallery.py --branch "${{ github.ref_name }}"
+
+      # Runs even if generation failed, so already-built thumbnails aren't lost.
+      - name: Save thumbnails to the release
+        if: always() && hashFiles('site/thumbs/*.webp') != ''
+        shell: bash
+        run: |
+          tar -cf /tmp/thumbs.tar -C site thumbs
+          gh release view thumbs-cache >/dev/null 2>&1 || \
+            gh release create thumbs-cache --title "Thumbnail cache (auto-generated)" \
+              --notes "Used by the Pages workflow. Do not delete." --prerelease --latest=false
+          gh release upload thumbs-cache /tmp/thumbs.tar --clobber
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
